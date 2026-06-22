@@ -16,7 +16,7 @@ public class LoginForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(420, 320);
+        ClientSize = new Size(420, 270);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 10F);
 
@@ -31,35 +31,25 @@ public class LoginForm : Form
             Font = new Font("Segoe UI", 16F, FontStyle.Bold)
         };
 
-        var layout = new TableLayoutPanel
-        {
-            Location = new Point(40, 90),
-            Size = new Size(340, 110),
-            ColumnCount = 2
-        };
-        layout.Controls.Add(new Label { Text = "Логин:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 0);
-        layout.Controls.Add(_login, 1, 0);
-        layout.Controls.Add(new Label { Text = "Пароль:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 1);
-        layout.Controls.Add(_password, 1, 1);
+        // Явное позиционирование: каждая подпись слева от своего поля ввода.
+        var loginLbl = new Label { Text = "Логин:", AutoSize = true, Location = new Point(40, 100) };
+        _login.Location = new Point(140, 97);
+        var passLbl = new Label { Text = "Пароль:", AutoSize = true, Location = new Point(40, 140) };
+        _password.Location = new Point(140, 137);
 
         var loginBtn = Ui.Btn("Войти", 150);
-        loginBtn.Location = new Point(40, 215);
+        loginBtn.Location = new Point(40, 195);
         loginBtn.Click += (_, _) => DoLogin();
 
         var registerBtn = Ui.Btn("Регистрация", 150);
         registerBtn.BackColor = Color.Gray;
-        registerBtn.Location = new Point(230, 215);
+        registerBtn.Location = new Point(230, 195);
         registerBtn.Click += (_, _) => new RegisterForm().ShowDialog();
 
-        var hint = new Label
+        Controls.AddRange(new Control[]
         {
-            Text = "Демо-доступ: admin / ivanov / kitchen / client (пароль *123)",
-            Location = new Point(40, 265),
-            AutoSize = true,
-            ForeColor = Color.Gray
-        };
-
-        Controls.AddRange(new Control[] { layout, loginBtn, registerBtn, hint, header });
+            loginLbl, _login, passLbl, _password, loginBtn, registerBtn, header
+        });
         AcceptButton = loginBtn;
     }
 
@@ -90,21 +80,23 @@ public class RegisterForm : Form
         ClientSize = new Size(380, 280);
         Font = new Font("Segoe UI", 10F);
 
-        var login = new TextBox { Width = 200 };
-        var pass = new TextBox { Width = 200, UseSystemPasswordChar = true };
-        var last = new TextBox { Width = 200 };
-        var first = new TextBox { Width = 200 };
-        var phone = new TextBox { Width = 200 };
+        var login = new TextBox { Width = 200, Location = new Point(120, 20) };
+        var pass = new TextBox { Width = 200, UseSystemPasswordChar = true, Location = new Point(120, 55) };
+        var last = new TextBox { Width = 200, Location = new Point(120, 90) };
+        var first = new TextBox { Width = 200, Location = new Point(120, 125) };
+        var phone = new TextBox { Width = 200, Location = new Point(120, 160) };
 
-        var grid = new TableLayoutPanel { Location = new Point(20, 20), Size = new Size(340, 180), ColumnCount = 2 };
-        grid.Controls.Add(new Label { Text = "Логин:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0); grid.Controls.Add(login, 1, 0);
-        grid.Controls.Add(new Label { Text = "Пароль:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1); grid.Controls.Add(pass, 1, 1);
-        grid.Controls.Add(new Label { Text = "Фамилия:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2); grid.Controls.Add(last, 1, 2);
-        grid.Controls.Add(new Label { Text = "Имя:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3); grid.Controls.Add(first, 1, 3);
-        grid.Controls.Add(new Label { Text = "Телефон:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4); grid.Controls.Add(phone, 1, 4);
+        var labels = new[]
+        {
+            new Label { Text = "Логин:", AutoSize = true, Location = new Point(20, 23) },
+            new Label { Text = "Пароль:", AutoSize = true, Location = new Point(20, 58) },
+            new Label { Text = "Фамилия:", AutoSize = true, Location = new Point(20, 93) },
+            new Label { Text = "Имя:", AutoSize = true, Location = new Point(20, 128) },
+            new Label { Text = "Телефон:", AutoSize = true, Location = new Point(20, 163) },
+        };
 
         var ok = Ui.Btn("Зарегистрироваться", 200);
-        ok.Location = new Point(20, 220);
+        ok.Location = new Point(20, 210);
         ok.Click += (_, _) =>
         {
             var r = _auth.RegisterClient(login.Text, pass.Text, last.Text, first.Text, phone.Text);
@@ -112,6 +104,7 @@ public class RegisterForm : Form
             if (r.Success) Close();
         };
 
-        Controls.AddRange(new Control[] { grid, ok });
+        Controls.AddRange(new Control[] { login, pass, last, first, phone, ok });
+        Controls.AddRange(labels);
     }
 }
