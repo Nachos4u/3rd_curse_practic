@@ -7,7 +7,7 @@ namespace Restaurant.Data;
 public class ShiftRepository
 {
     private const string Select = @"
-        SELECT s.id, s.waiter_id, s.work_date, s.status::text AS status,
+        SELECT s.id, s.waiter_id, s.work_date::timestamp AS work_date, s.status::text AS status,
                s.opened_at, s.closed_at,
                u.last_name || ' ' || u.first_name AS waiter_name,
                (SELECT string_agg(t.number::text, ', ' ORDER BY t.number)

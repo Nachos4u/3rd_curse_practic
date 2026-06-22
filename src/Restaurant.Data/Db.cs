@@ -20,6 +20,10 @@ public static class Db
     {
         // Сопоставление snake_case столбцов БД с PascalCase свойствами моделей.
         DefaultTypeMap.MatchNamesWithUnderscores = true;
+
+        // Обработчики типов date/time для совместимости Dapper и Npgsql.
+        SqlMapper.AddTypeHandler(new TimeOnlyHandler());
+        SqlMapper.AddTypeHandler(new DateOnlyHandler());
     }
 
     /// <summary>Текущая строка подключения.</summary>

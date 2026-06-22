@@ -30,8 +30,10 @@ public class WaiterOrdersControl : UserControl, IReloadable
 
         _orderGrid.SelectionChanged += (_, _) => LoadItems();
 
+        // Правая колонка фиксированной ширины; высота баров рассчитана на две строки
+        // кнопок, чтобы они не перекрывались таблицей в узкой колонке.
         var right = new Panel { Dock = DockStyle.Fill };
-        var addBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(4) };
+        var addBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 92, Padding = new Padding(4), WrapContents = true };
         var add = Ui.Btn("Добавить блюдо", 150);
         add.Click += (_, _) => AddDish();
         var del = Ui.Btn("Убрать блюдо", 130); del.BackColor = Color.Gray;
@@ -40,27 +42,32 @@ public class WaiterOrdersControl : UserControl, IReloadable
         addBar.Controls.Add(_dishBox);
         addBar.Controls.Add(new Label { Text = "Порций:", AutoSize = true, Margin = new Padding(8, 10, 2, 0) });
         addBar.Controls.Add(_qty);
+        addBar.SetFlowBreak(_qty, true);   // кнопки — на отдельную строку
         addBar.Controls.Add(add);
         addBar.Controls.Add(del);
 
-        var actionBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(4) };
+        var actionBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 84, Padding = new Padding(4), WrapContents = true };
         var place = Ui.Btn("Оформить заказ", 150);
         place.Click += (_, _) => PlaceOrder();
         var cancel = Ui.Btn("Отменить заказ", 150); cancel.BackColor = Color.Gray;
         cancel.Click += (_, _) => CancelOrder();
         actionBar.Controls.Add(place);
         actionBar.Controls.Add(cancel);
+        actionBar.SetFlowBreak(cancel, true);
         actionBar.Controls.Add(_totalLbl);
 
+        // Сначала заполняющая таблица, затем док-панели сверху/снизу (порядок важен).
         right.Controls.Add(_itemGrid);
         right.Controls.Add(addBar);
         right.Controls.Add(actionBar);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 480 };
-        split.Panel1.Controls.Add(_orderGrid);
-        split.Panel2.Controls.Add(right);
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 470));
+        root.Controls.Add(_orderGrid, 0, 0);
+        root.Controls.Add(right, 1, 0);
 
-        Controls.Add(split);
+        Controls.Add(root);
         Controls.Add(top);
     }
 

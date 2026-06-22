@@ -78,4 +78,46 @@ public class IntegrationTests
         var report = new ReportService().FreeTables(DateTime.Today.AddDays(60), new TimeOnly(15, 0));
         Assert.True(report.Rows.Count > 0);
     }
+
+    // --- Проверка чтения date/time и передачи TimeOnly через Dapper ---
+
+    [SkippableFact]
+    public void Reservations_GetByDate_ReadsDateAndTimeColumns()
+    {
+        Skip.IfNot(DbAvailable(), "БД недоступна");
+        // На 22.06.2026 в демо-данных есть активные брони; чтение reserve_date
+        // (date→DateTime) и start_time/end_time (time→TimeOnly) не должно падать.
+        var list = new ReservationRepository().GetByDate(new DateTime(2026, 6, 22));
+        Assert.NotEmpty(list);
+        Assert.All(list, r => Assert.True(r.EndTime > r.StartTime));
+    }
+
+    [SkippableFact]
+    public void Tables_GetBusyTableNumbers_AcceptsTimeOnlyParameter()
+    {
+        Skip.IfNot(DbAvailable(), "БД недоступна");
+        // Бронь стола №4 на 13:00–15:00 — в 13:30 он должен быть занят.
+        var busy = new TableRepository().GetBusyTableNumbers(new DateTime(2026, 6, 22), new TimeOnly(13, 30));
+        Assert.Contains(4, busy);
+    }
+
+    [SkippableFact]
+    public void Shifts_GetByDate_ReadsWorkDate()
+    {
+        Skip.IfNot(DbAvailable(), "БД недоступна");
+        var shifts = new ShiftRepository().GetByDate(new DateTime(2026, 6, 22));
+        Assert.NotEmpty(shifts);
+    }
+
+    [SkippableFact]
+    public void Reservation_AreTablesFree_QueriesWithTimeOnly()
+    {
+        Skip.IfNot(DbAvailable(), "БД недоступна");
+        var tableId = new TableRepository().GetAll().First(t => t.Number == 4).Id;
+        var repo = new ReservationRepository();
+        // Стол №4 занят 13:00–15:00 22.06.2026 — пересекающийся интервал не свободен.
+        bool free = repo.AreTablesFree(new DateTime(2026, 6, 22),
+            new TimeOnly(14, 0), new TimeOnly(16, 0), new[] { tableId });
+        Assert.False(free);
+    }
 }

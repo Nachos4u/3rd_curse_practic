@@ -7,7 +7,7 @@ namespace Restaurant.Data;
 public class ReservationRepository
 {
     private const string Select = @"
-        SELECT r.id, r.client_id, r.guests_count, r.reserve_date,
+        SELECT r.id, r.client_id, r.guests_count, r.reserve_date::timestamp AS reserve_date,
                r.start_time, r.end_time, r.status::text AS status,
                u.last_name || ' ' || u.first_name AS client_name,
                (SELECT string_agg(t.number::text, ', ' ORDER BY t.number)
