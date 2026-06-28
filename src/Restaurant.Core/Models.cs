@@ -53,13 +53,13 @@ public class RestaurantTable
 public class Reservation
 {
     public int Id { get; set; }
-    public int? ClientId { get; set; }
+    public string GuestName { get; set; } = "";   // бронь оформляется на имя гостя
+    public string? GuestPhone { get; set; }
     public short GuestsCount { get; set; }
     public DateTime ReserveDate { get; set; }
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
     public ReserveStatus Status { get; set; }
-    public string? ClientName { get; set; }
     public string? Tables { get; set; }   // перечень номеров столов через запятую
 }
 
@@ -99,10 +99,11 @@ public class Shift
 public class Order
 {
     public int Id { get; set; }
-    public int? ReservationId { get; set; }
     public int TableId { get; set; }
     public int TableNumber { get; set; }
-    public int WaiterId { get; set; }
+
+    /// <summary>Официант. Не хранится в orders — выводится представлением v_orders
+    /// по закреплению стола за официантом в смене.</summary>
     public string WaiterName { get; set; } = "";
     public OrderStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -128,10 +129,14 @@ public class OrderItem
 public class Bill
 {
     public int Id { get; set; }
-    public int? ReservationId { get; set; }
+
+    // Стол и сумма не хранятся в таблице bills, а выводятся представлением
+    // v_bills из заказов счёта (во избежание дублирования данных).
     public int TableId { get; set; }
     public int TableNumber { get; set; }
     public BillStatus Status { get; set; }
+
+    /// <summary>Сумма счёта. В БД не хранится — вычисляется представлением v_bill_totals.</summary>
     public decimal TotalAmount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? PaidAt { get; set; }
@@ -142,8 +147,6 @@ public class Receipt
 {
     public int Id { get; set; }
     public int BillId { get; set; }
-    public int WaiterId { get; set; }
-    public string WaiterName { get; set; } = "";
     public decimal Total { get; set; }
     public string PaymentMethod { get; set; } = "CASH";
     public DateTime PaidAt { get; set; }

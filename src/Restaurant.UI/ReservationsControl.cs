@@ -21,6 +21,8 @@ public class ReservationsControl : UserControl, IReloadable
     private readonly DateTimePicker _start = new() { Format = DateTimePickerFormat.Time, ShowUpDown = true, Width = 90 };
     private readonly DateTimePicker _end = new() { Format = DateTimePickerFormat.Time, ShowUpDown = true, Width = 90 };
     private readonly NumericUpDown _guests = new() { Minimum = 1, Maximum = 100, Value = 2, Width = 60 };
+    private readonly TextBox _guestName = new() { Width = 220 };
+    private readonly TextBox _guestPhone = new() { Width = 220 };
     private readonly CheckedListBox _tablesList = new() { Width = 220, Height = 150, CheckOnClick = true };
 
     public ReservationsControl(bool clientMode)
@@ -59,6 +61,11 @@ public class ReservationsControl : UserControl, IReloadable
         _end.Value = DateTime.Today.AddHours(14);
 
         flow.Controls.Add(Ui.Title("Новая бронь"));
+        if (!_clientMode)
+        {
+            flow.Controls.Add(Field("Гость:", _guestName));
+            flow.Controls.Add(Field("Телефон:", _guestPhone));
+        }
         flow.Controls.Add(Field("Дата:", _resvDate));
         flow.Controls.Add(Field("Начало:", _start));
         flow.Controls.Add(Field("Окончание:", _end));
@@ -90,7 +97,8 @@ public class ReservationsControl : UserControl, IReloadable
                 .Select(r => new
                 {
                     r.Id,
-                    Клиент = r.ClientName ?? "—",
+                    Гость = r.GuestName,
+                    Телефон = r.GuestPhone ?? "—",
                     Гостей = r.GuestsCount,
                     Дата = r.ReserveDate.ToString("dd.MM.yyyy"),
                     Начало = r.StartTime.ToString("HH:mm"),
@@ -109,8 +117,22 @@ public class ReservationsControl : UserControl, IReloadable
     private void Create()
     {
         var tableIds = _tablesList.CheckedItems.Cast<TableItem>().Select(i => i.Table.Id).ToList();
-        int? clientId = _clientMode ? AppSession.Current!.Id : null;
-        var r = _service.Create(clientId, (int)_guests.Value, _resvDate.Value,
+
+        // Имя гостя: в режиме клиента — его ФИО и телефон из профиля, иначе спрашиваем.
+        string guestName;
+        string? guestPhone = null;
+        if (_clientMode)
+        {
+            guestName = AppSession.Current!.FullName;
+            guestPhone = AppSession.Current!.Phone;
+        }
+        else
+        {
+            guestName = _guestName.Text.Trim();
+            guestPhone = string.IsNullOrWhiteSpace(_guestPhone.Text) ? null : _guestPhone.Text.Trim();
+        }
+
+        var r = _service.Create(guestName, guestPhone, (int)_guests.Value, _resvDate.Value,
             TimeOnly.FromDateTime(_start.Value), TimeOnly.FromDateTime(_end.Value), tableIds);
         Ui.Show(r);
         if (r.Success) { _date.Value = _resvDate.Value; Reload(); }

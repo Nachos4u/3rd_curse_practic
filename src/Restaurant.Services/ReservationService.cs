@@ -21,8 +21,10 @@ public class ReservationService
     /// рабочее время 9:00–23:00, число гостей &gt; 0, достаточная вместимость столов,
     /// отсутствие пересечений с другими активными бронями.
     /// </summary>
-    public OperationResult Create(int? clientId, int guests, DateTime date, TimeOnly start, TimeOnly end, List<int> tableIds)
+    public OperationResult Create(string guestName, string? guestPhone, int guests, DateTime date, TimeOnly start, TimeOnly end, List<int> tableIds)
     {
+        if (string.IsNullOrWhiteSpace(guestName))
+            return OperationResult.Fail("Укажите имя гостя для брони.");
         if (tableIds.Count == 0)
             return OperationResult.Fail("Выберите хотя бы один столик.");
         if (guests <= 0)
@@ -44,7 +46,7 @@ public class ReservationService
 
         var r = new Reservation
         {
-            ClientId = clientId, GuestsCount = (short)guests,
+            GuestName = guestName.Trim(), GuestPhone = guestPhone, GuestsCount = (short)guests,
             ReserveDate = date.Date, StartTime = start, EndTime = end
         };
         int id = _repo.Create(r, tableIds);

@@ -184,54 +184,126 @@ def build_flowchart():
 # 3. ER-диаграмма
 # --------------------------------------------------------------------------
 def build_er():
-    W, H = 1500, 1000
+    import math as _m
+    W, H = 1740, 1240
+    BW = 250                       # ширина блока сущности
     img = Image.new("RGB", (W, H), "white")
     d = ImageDraw.Draw(img)
-    ft = font(20, True); fttl = font(13, True); fl = font(12)
+    ft = font(22, True); fttl = font(13, True); fl = font(12); fc = font(12, True)
+    LINE = "#c0504d"
 
-    text_center(d, (0, 8, W, 40), "ER-диаграмма базы данных «Прайм Бургер»", ft)
+    text_center(d, (0, 8, W, 44), "ER-диаграмма базы данных «Прайм Бургер»", ft)
 
     ent = {
-        "roles":         (40, 60, ["PK id", "code", "name"]),
-        "users":         (40, 200, ["PK id", "FK role_id", "login", "password_hash", "ФИО, phone"]),
-        "shifts":        (40, 420, ["PK id", "FK waiter_id", "work_date", "status"]),
-        "shift_tables":  (40, 620, ["PK,FK shift_id", "PK,FK table_id"]),
-        "restaurant_tables": (380, 560, ["PK id", "number", "seats", "pos_x, pos_y", "status"]),
-        "reservations":  (380, 60, ["PK id", "FK client_id", "guests_count", "reserve_date", "start/end_time", "status"]),
-        "reservation_tables": (380, 320, ["PK,FK reservation_id", "PK,FK table_id"]),
-        "categories":    (760, 60, ["PK id", "name"]),
-        "dishes":        (760, 200, ["PK id", "FK category_id", "name", "base_price", "is_active"]),
-        "stock":         (760, 420, ["PK,FK dish_id", "quantity"]),
-        "promotions":    (760, 580, ["PK id", "discount_percent", "start/end_date"]),
-        "orders":        (1120, 200, ["PK id", "FK reservation_id", "FK table_id", "FK waiter_id", "status", "placed_at"]),
-        "order_items":   (1120, 60, ["PK id", "FK order_id", "FK dish_id", "quantity", "unit_price", "discount"]),
-        "bills":         (1120, 480, ["PK id", "FK table_id", "status", "total_amount"]),
-        "receipts":      (1120, 700, ["PK id", "FK bill_id", "FK waiter_id", "total", "paid_at"]),
-        "bill_orders":   (820, 760, ["PK,FK bill_id", "PK,FK order_id"]),
+        "roles":             (40,   70, ["PK id", "code", "name"]),
+        "users":             (40,  210, ["PK id", "FK role_id", "login", "password_hash", "ФИО, phone"]),
+        "shifts":            (40,  470, ["PK id", "FK waiter_id", "work_date", "status"]),
+        "shift_tables":      (40,  700, ["PK,FK shift_id", "PK,FK table_id"]),
+        "reservations":      (380,  70, ["PK id", "guest_name", "guest_phone", "guests_count",
+                                         "reserve_date", "start/end_time", "status"]),
+        "reservation_tables":(380, 500, ["PK,FK reservation_id", "PK,FK table_id"]),
+        "restaurant_tables": (380, 700, ["PK id", "number", "seats", "pos_x, pos_y", "status"]),
+        "categories":        (760,  70, ["PK id", "name"]),
+        "dishes":            (760, 230, ["PK id", "FK category_id", "name", "base_price", "is_active"]),
+        "stock":             (760, 470, ["PK,FK dish_id", "quantity"]),
+        "stock_movements":   (760, 610, ["PK id", "FK dish_id", "change", "reason", "created_at"]),
+        "promotions":        (760, 830, ["PK id", "name", "discount_percent", "start/end_date"]),
+        "promotion_dishes":  (1100, 900, ["PK,FK promotion_id", "PK,FK dish_id"]),
+        "order_items":       (1420,  70, ["PK id", "FK order_id", "FK dish_id", "quantity",
+                                          "unit_price", "discount"]),
+        "orders":            (1420, 330, ["PK id", "FK table_id", "status", "created_at", "placed_at"]),
+        "bills":             (1420, 600, ["PK id", "status", "created_at", "paid_at"]),
+        "bill_orders":       (1120, 660, ["PK,FK bill_id", "PK,FK order_id"]),
+        "receipts":          (1420, 850, ["PK id", "FK bill_id", "total", "paid_at"]),
     }
-    pos = {}
-    for name, (x, y, lines) in ent.items():
-        w, h = 230, 30 + 18 * len(lines)
-        multiline_box(d, (x, y, x + w, y + h), name, lines, fttl, fl)
-        pos[name] = (x, y, w, h)
 
-    def rel(a, b):
-        ax, ay, aw, ah = pos[a]; bx, by, bw, bh = pos[b]
-        d.line([(ax + aw / 2, ay + ah / 2), (bx + bw / 2, by + bh / 2)], fill="#c0504d", width=2)
+    def box_of(name):
+        x, y, lines = ent[name]
+        return (x, y, BW, 30 + 18 * len(lines))
 
-    for a, b in [("users", "roles"), ("shifts", "users"), ("shift_tables", "shifts"),
-                 ("shift_tables", "restaurant_tables"), ("reservations", "users"),
-                 ("reservation_tables", "reservations"), ("reservation_tables", "restaurant_tables"),
-                 ("dishes", "categories"), ("stock", "dishes"), ("order_items", "orders"),
-                 ("order_items", "dishes"), ("orders", "reservations"), ("orders", "restaurant_tables"),
-                 ("orders", "users"), ("bills", "restaurant_tables"), ("receipts", "bills"),
-                 ("receipts", "users"), ("bill_orders", "bills"), ("bill_orders", "orders")]:
-        rel(a, b)
+    def draw_boxes():
+        for name in ent:
+            x, y, w, h = box_of(name)
+            multiline_box(d, (x, y, x + w, y + h), name, ent[name][2], fttl, fl)
 
-    # перерисовать сущности поверх линий
-    for name, (x, y, lines) in ent.items():
-        w, h = 230, 30 + 18 * len(lines)
-        multiline_box(d, (x, y, x + w, y + h), name, lines, fttl, fl)
+    def border_point(box, tx, ty):
+        x, y, w, h = box
+        cx, cy = x + w / 2, y + h / 2
+        dx, dy = tx - cx, ty - cy
+        if dx == 0 and dy == 0:
+            return cx, cy
+        sx = (w / 2) / abs(dx) if dx else 1e9
+        sy = (h / 2) / abs(dy) if dy else 1e9
+        s = min(sx, sy)
+        return cx + dx * s, cy + dy * s
+
+    def crowfoot(tip, ux, uy):
+        apex = (tip[0] + ux * 17, tip[1] + uy * 17)
+        px, py = -uy, ux
+        for sp in (-9, 9):
+            d.line([apex, (tip[0] + px * sp, tip[1] + py * sp)], fill=LINE, width=2)
+        d.line([apex, tip], fill=LINE, width=2)
+
+    def one_bar(tip, ux, uy):
+        bx, by = tip[0] + ux * 13, tip[1] + uy * 13
+        px, py = -uy, ux
+        d.line([(bx + px * 7, by + py * 7), (bx - px * 7, by - py * 7)], fill=LINE, width=2)
+
+    def rel(parent, child, kind):
+        pb, cb = box_of(parent), box_of(child)
+        pc = (pb[0] + pb[2] / 2, pb[1] + pb[3] / 2)
+        cc = (cb[0] + cb[2] / 2, cb[1] + cb[3] / 2)
+        p = border_point(pb, *cc)
+        c = border_point(cb, *pc)
+        d.line([p, c], fill=LINE, width=2)
+        # единичная сторона (родитель)
+        ln = _m.hypot(c[0] - p[0], c[1] - p[1]) or 1
+        ux, uy = (c[0] - p[0]) / ln, (c[1] - p[1]) / ln
+        one_bar(p, ux, uy)
+        # сторона потомка
+        if kind == "1N":
+            crowfoot(c, -ux, -uy)
+        else:
+            one_bar(c, -ux, -uy)
+        # подпись типа связи у середины
+        mx, my = (p[0] + c[0]) / 2, (p[1] + c[1]) / 2
+        d.text((mx + 4, my - 16), "1:1" if kind == "11" else "1:∞", font=fc, fill=LINE)
+
+    draw_boxes()
+    rels = [
+        ("roles", "users", "1N"), ("users", "shifts", "1N"),
+        ("shifts", "shift_tables", "1N"), ("restaurant_tables", "shift_tables", "1N"),
+        ("reservations", "reservation_tables", "1N"), ("restaurant_tables", "reservation_tables", "1N"),
+        ("categories", "dishes", "1N"), ("dishes", "stock", "11"),
+        ("dishes", "stock_movements", "1N"), ("promotions", "promotion_dishes", "1N"),
+        ("dishes", "promotion_dishes", "1N"), ("restaurant_tables", "orders", "1N"),
+        ("orders", "order_items", "1N"), ("dishes", "order_items", "1N"),
+        ("bills", "bill_orders", "1N"), ("orders", "bill_orders", "1N"),
+        ("bills", "receipts", "11"),
+    ]
+    for a, b, k in rels:
+        rel(a, b, k)
+    draw_boxes()   # сущности поверх линий (маркеры остаются снаружи блоков)
+
+    # Легенда
+    lx, ly = 40, 1010
+    d.rectangle((lx, ly, lx + 430, ly + 200), outline="#888", width=1)
+    text_center(d, (lx, ly + 4, lx + 430, ly + 26), "Условные обозначения связей", fc)
+    d.line([(lx + 20, ly + 48), (lx + 90, ly + 48)], fill=LINE, width=2)
+    one_bar((lx + 20, ly + 48), 1, 0)
+    d.text((lx + 100, ly + 40), "«один» (1)", font=fl, fill="black")
+    d.line([(lx + 240, ly + 48), (lx + 310, ly + 48)], fill=LINE, width=2)
+    crowfoot((lx + 310, ly + 48), 1, 0)
+    d.text((lx + 320, ly + 40), "«многие» (∞)", font=fl, fill="black")
+    for i, t in enumerate([
+        "1:1 — один-к-одному    1:∞ — один-ко-многим",
+        "M:N (многие-ко-многим) реализованы таблицами-связками:",
+        "  shifts ↔ restaurant_tables (shift_tables)",
+        "  reservations ↔ restaurant_tables (reservation_tables)",
+        "  orders ↔ dishes (order_items);  bills ↔ orders (bill_orders)",
+        "  promotions ↔ dishes (promotion_dishes)",
+    ]):
+        d.text((lx + 16, ly + 70 + i * 20), t, font=fl, fill="black")
 
     img.save(os.path.join(OUT, "er.png"))
 

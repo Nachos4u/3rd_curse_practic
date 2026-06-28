@@ -42,7 +42,8 @@ PHYS = [
                ("pos_x, pos_y", "integer", "Координаты на схеме зала"),
                ("status", "table_status", "Статус стола")]),
     ("reservations", [("id", "serial, PK", "Идентификатор брони"),
-               ("client_id", "integer, FK→users", "Клиент"),
+               ("guest_name", "varchar(120), NOT NULL", "Имя гостя"),
+               ("guest_phone", "varchar(20)", "Телефон гостя"),
                ("guests_count", "smallint, CHECK >0", "Число гостей"),
                ("reserve_date", "date, NOT NULL", "Дата брони"),
                ("start_time/end_time", "time, CHECK end>start", "Интервал брони"),
@@ -70,11 +71,10 @@ PHYS = [
                ("start_date/end_date", "date", "Период действия"),
                ("is_active", "boolean", "Активность акции")]),
     ("orders", [("id", "serial, PK", "Идентификатор заказа"),
-               ("reservation_id", "integer, FK→reservations", "Бронь"),
                ("table_id", "integer, FK→tables", "Стол"),
-               ("waiter_id", "integer, FK→users", "Официант"),
                ("status", "order_status", "Статус заказа"),
-               ("placed_at", "timestamp", "Время оформления")]),
+               ("created_at / placed_at", "timestamp", "Создание и оформление"),
+               ("(официант)", "вычисляется", "Выводится из закрепления стола в смене (v_orders)")]),
     ("order_items", [("id", "serial, PK", "Идентификатор позиции"),
                ("order_id", "integer, FK→orders", "Заказ"),
                ("dish_id", "integer, FK→dishes", "Блюдо"),
@@ -82,15 +82,16 @@ PHYS = [
                ("unit_price", "numeric(10,2)", "Цена на момент заказа"),
                ("discount_percent", "numeric(5,2)", "Скидка по акции")]),
     ("bills", [("id", "serial, PK", "Идентификатор счёта"),
-               ("table_id", "integer, FK→tables", "Стол"),
                ("status", "bill_status", "Статус счёта"),
-               ("total_amount", "numeric(12,2)", "Сумма счёта")]),
+               ("created_at / paid_at", "timestamp", "Создание и оплата счёта"),
+               ("(стол, бронь, сумма)", "вычисляются", "Выводятся из заказов счёта "
+                "представлениями v_bills / v_bill_totals, не хранятся")]),
     ("bill_orders", [("bill_id", "integer, PK, FK", "Счёт"),
                ("order_id", "integer, PK, FK", "Заказ")]),
     ("receipts", [("id", "serial, PK", "Идентификатор чека"),
                ("bill_id", "integer, FK, UNIQUE", "Счёт"),
-               ("waiter_id", "integer, FK→users", "Официант"),
-               ("total", "numeric(12,2)", "Сумма чека"),
+               ("total", "numeric(12,2)", "Сумма чека (фиксируется при оплате)"),
+               ("payment_method", "varchar(20)", "Способ оплаты"),
                ("paid_at", "timestamp", "Время оплаты")]),
 ]
 
@@ -265,7 +266,23 @@ def build_report():
              "неключевых атрибутов нет;")
     d.bullet("3НФ — отсутствуют транзитивные зависимости: наименование категории хранится "
              "в таблице categories, а не в dishes; цена позиции фиксируется в order_items "
-             "на момент заказа; сумма счёта вычисляется и поддерживается триггером.")
+             "на момент заказа; сумма счёта не хранится в bills, а вычисляется представлением "
+             "v_bill_totals, что исключает избыточные (производные) данные.")
+    d.para("Кроме того, схема приведена к виду без циклических связей: граф внешних ключей "
+           "является ациклическим (деревом). Для этого устранены связи, по которым один и "
+           "тот же факт достижим двумя путями:")
+    d.bullet("счёт (bills) не хранит стол, бронь и сумму — они определяются его заказами "
+             "(bill_orders → orders) и выводятся представлениями v_bills / v_bill_totals;")
+    d.bullet("заказ (orders) не хранит официанта и бронь: официант определяется закреплением "
+             "стола за официантом в смене (shift_tables → shifts) и выводится представлением "
+             "v_orders. Это убирает связи orders→users и orders→reservations;")
+    d.bullet("бронь оформляется на имя гостя (guest_name, guest_phone) без ссылки на users — "
+             "иначе возникал цикл users → reservations → … → shifts → users;")
+    d.bullet("чек (receipts) не хранит официанта-кассира — он выводится из заказов счёта;")
+    d.bullet("скидка на категорию задаётся перечислением её блюд (promotion_dishes), что "
+             "устраняет связь promotions→categories, дублирующую путь через dishes.")
+    d.para("В результате между любыми двумя таблицами существует не более одного пути по "
+           "внешним ключам — циклические зависимости отсутствуют.")
     d.h2("2.5 Физическая модель данных")
     d.para("Физическая модель реализована в СУБД PostgreSQL. Ниже приведено описание "
            "основных таблиц базы данных.")
@@ -330,9 +347,9 @@ def build_report():
              ["Несоответствие имён столбцов и свойств",
               "snake_case в БД и PascalCase в C#",
               "Включён режим Dapper MatchNamesWithUnderscores"],
-             ["Сумма счёта не обновлялась",
-              "Отсутствие пересчёта при изменении состава счёта",
-              "Добавлен триггер trg_recalc_bill"],
+             ["Хранимая сумма счёта нарушала 3НФ",
+              "Избыточные вычисляемые данные в столбце bills.total_amount",
+              "Столбец удалён; сумма вычисляется представлением v_bill_totals"],
              ["Ошибка передачи и чтения дат через Dapper",
               "Dapper не передаёт TimeOnly как параметр и не приводит DateOnly к DateTime",
               "Зарегистрированы обработчики типов Dapper, приведение date::timestamp"]],
@@ -408,11 +425,12 @@ def build_manual():
 
     d.h1("2 Установка и запуск")
     d.h2("2.1 Развёртывание базы данных")
-    d.para("Создайте базу данных и примените SQL-скрипты из каталога db в указанном порядке:")
-    d.para("psql -U postgres -c \"CREATE DATABASE restaurant_db ENCODING 'UTF8';\"", indent=False, italic=True, size=12)
-    d.para("psql -U postgres -d restaurant_db -f db/01_schema.sql", indent=False, italic=True, size=12)
-    d.para("psql -U postgres -d restaurant_db -f db/02_views_functions.sql", indent=False, italic=True, size=12)
-    d.para("psql -U postgres -d restaurant_db -f db/03_seed.sql", indent=False, italic=True, size=12)
+    d.para("Создайте базу данных и примените SQL-скрипты из каталога db в указанном порядке "
+           "(сервер PostgreSQL на порту 5433):")
+    d.para("psql -U postgres -p 5433 -c \"CREATE DATABASE restaurant_db ENCODING 'UTF8';\"", indent=False, italic=True, size=12)
+    d.para("psql -U postgres -p 5433 -d restaurant_db -f db/01_schema.sql", indent=False, italic=True, size=12)
+    d.para("psql -U postgres -p 5433 -d restaurant_db -f db/02_views_functions.sql", indent=False, italic=True, size=12)
+    d.para("psql -U postgres -p 5433 -d restaurant_db -f db/03_seed.sql", indent=False, italic=True, size=12)
     d.h2("2.2 Настройка подключения и запуск")
     d.para("По умолчанию приложение подключается к серверу localhost. Строку подключения "
            "можно переопределить переменной окружения RESTAURANT_DB. Для сборки и запуска "

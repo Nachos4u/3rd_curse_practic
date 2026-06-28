@@ -1,12 +1,12 @@
 -- =====================================================================
 --  Прайм Бургер — наполнение демонстрационными данными
 --  Файл 3/3
---  Текущая дата сценария: 22.06.2026 (отчёты сравнивают май и июнь 2026)
+--  Текущая дата сценария: июнь 2026 (отчёты сравнивают май и июнь 2026)
 -- =====================================================================
 SET client_min_messages = WARNING;
 
 TRUNCATE receipts, bill_orders, bills, order_items, orders,
-         stock_movements, stock, promotion_dishes, promotion_categories, promotions,
+         stock_movements, stock, promotion_dishes, promotions,
          dishes, categories, shift_tables, shifts,
          reservation_tables, reservations, restaurant_tables, users, roles
 RESTART IDENTITY CASCADE;
@@ -53,82 +53,90 @@ INSERT INTO dishes(category_id, name, base_price) VALUES
 INSERT INTO stock(dish_id, quantity)
  SELECT id, 100 FROM dishes;
 
--- Акция: скидка 15% на категорию «Десерты» в июне 2026
+-- Акция: скидка 15% на десерты (Чизкейк, Мороженое) в июне 2026.
+-- Скидка на категорию задаётся перечислением её блюд.
 INSERT INTO promotions(name, discount_percent, start_date, end_date)
  VALUES ('Сладкий июнь', 15.00, DATE '2026-06-01', DATE '2026-06-30');
-INSERT INTO promotion_categories(promotion_id, category_id)
- SELECT (SELECT id FROM promotions WHERE name='Сладкий июнь'), id FROM categories WHERE name='Десерты';
-
--- Смены официантов (план + закрытые) на текущую дату
-INSERT INTO shifts(waiter_id, work_date, status, opened_at, closed_at) VALUES
- (2, DATE '2026-06-22', 'OPEN', TIMESTAMP '2026-06-22 09:00', NULL),
- (3, DATE '2026-06-21', 'CLOSED', TIMESTAMP '2026-06-21 09:00', TIMESTAMP '2026-06-21 23:00');
-INSERT INTO shift_tables(shift_id, table_id) VALUES
- (1,1),(1,2),(1,3),(1,4),(1,5),
- (2,6),(2,7),(2,8),(2,9),(2,10);
+INSERT INTO promotion_dishes(promotion_id, dish_id)
+ SELECT (SELECT id FROM promotions WHERE name='Сладкий июнь'), d.id
+ FROM dishes d JOIN categories c ON c.id = d.category_id
+ WHERE c.name = 'Десерты';
 
 -- ---------------------------------------------------------------------
--- Демонстрационные брони (май и июнь 2026)
+-- Демонстрационные брони (май и июнь 2026). Бронь — на имя гостя.
 -- ---------------------------------------------------------------------
-INSERT INTO reservations(client_id, guests_count, reserve_date, start_time, end_time, status) VALUES
- (5, 3, DATE '2026-05-05', TIME '12:00', TIME '14:00', 'COMPLETED'),
- (5, 4, DATE '2026-05-12', TIME '18:00', TIME '20:00', 'COMPLETED'),
- (5, 2, DATE '2026-05-20', TIME '13:00', TIME '15:00', 'COMPLETED'),
- (5, 4, DATE '2026-06-03', TIME '19:00', TIME '21:00', 'COMPLETED'),
- (5, 3, DATE '2026-06-10', TIME '12:00', TIME '14:00', 'COMPLETED'),
- (5, 2, DATE '2026-06-22', TIME '13:00', TIME '15:00', 'ACTIVE'),
- (5, 4, DATE '2026-06-22', TIME '19:00', TIME '21:00', 'ACTIVE');
+INSERT INTO reservations(guest_name, guest_phone, guests_count, reserve_date, start_time, end_time, status) VALUES
+ ('Сидоров Сидор',  '+70000000005', 3, DATE '2026-05-05', TIME '12:00', TIME '14:00', 'COMPLETED'),
+ ('Сидоров Сидор',  '+70000000005', 4, DATE '2026-05-12', TIME '18:00', TIME '20:00', 'COMPLETED'),
+ ('Кузнецова Анна', '+70000000010', 2, DATE '2026-05-20', TIME '13:00', TIME '15:00', 'COMPLETED'),
+ ('Сидоров Сидор',  '+70000000005', 4, DATE '2026-06-03', TIME '19:00', TIME '21:00', 'COMPLETED'),
+ ('Морозов Олег',   '+70000000011', 3, DATE '2026-06-10', TIME '12:00', TIME '14:00', 'COMPLETED'),
+ ('Сидоров Сидор',  '+70000000005', 2, DATE '2026-06-22', TIME '13:00', TIME '15:00', 'ACTIVE'),
+ ('Сидоров Сидор',  '+70000000005', 4, DATE '2026-06-22', TIME '19:00', TIME '21:00', 'ACTIVE');
 INSERT INTO reservation_tables(reservation_id, table_id) VALUES
  (1,1),(2,2),(3,3),(4,1),(5,2),(6,4),(7,5),(7,6);
 
 -- ---------------------------------------------------------------------
--- Демонстрационные заказы (SERVED) с позициями, счетами и чеками.
--- Процедура: создаём заказ -> позиции -> счёт -> чек.
--- Здесь данные вставляются напрямую (без вызова функций) для скорости наполнения.
+-- Вспомогательная функция: один оплаченный заказ.
+-- Создаёт (при необходимости) смену официанта на дату заказа и закрепляет
+-- за ним стол — именно по этому закреплению v_orders определяет официанта.
 -- ---------------------------------------------------------------------
-
--- Вспомогательная функция наполнения одного оплаченного заказа
 CREATE OR REPLACE FUNCTION seed_paid_order(
-    p_resv INT, p_table INT, p_waiter INT, p_when TIMESTAMP,
+    p_waiter INT, p_table INT, p_when TIMESTAMP,
     p_dish1 INT, p_q1 INT, p_dish2 INT, p_q2 INT)
 RETURNS VOID AS $$
-DECLARE v_order INT; v_bill INT; v_total NUMERIC;
+DECLARE v_shift INT; v_order INT; v_bill INT; v_total NUMERIC;
 BEGIN
-    INSERT INTO orders(reservation_id, table_id, waiter_id, status, created_at, placed_at)
-    VALUES (p_resv, p_table, p_waiter, 'SERVED', p_when, p_when) RETURNING id INTO v_order;
+    INSERT INTO shifts(waiter_id, work_date, status, opened_at, closed_at)
+    VALUES (p_waiter, p_when::date, 'CLOSED',
+            p_when::date + TIME '09:00', p_when::date + TIME '23:00')
+    ON CONFLICT (waiter_id, work_date) DO UPDATE SET status = shifts.status
+    RETURNING id INTO v_shift;
+    INSERT INTO shift_tables(shift_id, table_id) VALUES (v_shift, p_table)
+    ON CONFLICT DO NOTHING;
 
+    INSERT INTO orders(table_id, status, created_at, placed_at)
+    VALUES (p_table, 'SERVED', p_when, p_when) RETURNING id INTO v_order;
     INSERT INTO order_items(order_id, dish_id, quantity, unit_price, discount_percent)
-    SELECT v_order, p_dish1, p_q1, base_price, 0 FROM dishes WHERE id=p_dish1;
+    SELECT v_order, p_dish1, p_q1, base_price, 0 FROM dishes WHERE id = p_dish1;
     INSERT INTO order_items(order_id, dish_id, quantity, unit_price, discount_percent)
-    SELECT v_order, p_dish2, p_q2, base_price, 0 FROM dishes WHERE id=p_dish2;
+    SELECT v_order, p_dish2, p_q2, base_price, 0 FROM dishes WHERE id = p_dish2;
+    UPDATE stock SET quantity = quantity - p_q1 WHERE dish_id = p_dish1;
+    UPDATE stock SET quantity = quantity - p_q2 WHERE dish_id = p_dish2;
 
-    UPDATE stock SET quantity = quantity - p_q1 WHERE dish_id=p_dish1;
-    UPDATE stock SET quantity = quantity - p_q2 WHERE dish_id=p_dish2;
-
-    INSERT INTO bills(reservation_id, table_id, status, created_at, paid_at)
-    VALUES (p_resv, p_table, 'PAID', p_when, p_when) RETURNING id INTO v_bill;
+    INSERT INTO bills(status, created_at, paid_at) VALUES ('PAID', p_when, p_when) RETURNING id INTO v_bill;
     INSERT INTO bill_orders(bill_id, order_id) VALUES (v_bill, v_order);
-
-    SELECT total_amount INTO v_total FROM bills WHERE id=v_bill;
-    INSERT INTO receipts(bill_id, waiter_id, total, payment_method, paid_at)
-    VALUES (v_bill, p_waiter, v_total, 'CASH', p_when);
+    SELECT total INTO v_total FROM v_bill_totals WHERE bill_id = v_bill;
+    INSERT INTO receipts(bill_id, total, payment_method, paid_at)
+    VALUES (v_bill, v_total, 'CASH', p_when);
 END;
 $$ LANGUAGE plpgsql;
 
--- Май 2026
-SELECT seed_paid_order(1, 1, 2, TIMESTAMP '2026-05-05 12:30', 1, 2, 5, 2);
-SELECT seed_paid_order(2, 2, 3, TIMESTAMP '2026-05-12 18:30', 2, 1, 8, 3);
-SELECT seed_paid_order(3, 3, 2, TIMESTAMP '2026-05-20 13:15', 3, 1, 11, 1);
-SELECT seed_paid_order(NULL, 5, 3, TIMESTAMP '2026-05-25 14:00', 4, 2, 9, 2);
+-- Май 2026 (официанты: 2 — Иванов, 3 — Петров)
+SELECT seed_paid_order(2, 1, TIMESTAMP '2026-05-05 12:30', 1, 2, 5, 2);
+SELECT seed_paid_order(3, 2, TIMESTAMP '2026-05-12 18:30', 2, 1, 8, 3);
+SELECT seed_paid_order(2, 3, TIMESTAMP '2026-05-20 13:15', 3, 1, 11, 1);
+SELECT seed_paid_order(3, 5, TIMESTAMP '2026-05-25 14:00', 4, 2, 9, 2);
 
 -- Июнь 2026
-SELECT seed_paid_order(4, 1, 2, TIMESTAMP '2026-06-03 19:20', 1, 3, 7, 2);
-SELECT seed_paid_order(5, 2, 3, TIMESTAMP '2026-06-10 12:40', 2, 2, 11, 2);
-SELECT seed_paid_order(NULL, 4, 2, TIMESTAMP '2026-06-15 20:00', 3, 1, 12, 1);
-SELECT seed_paid_order(NULL, 6, 3, TIMESTAMP '2026-06-18 13:30', 1, 1, 8, 2);
+SELECT seed_paid_order(2, 1, TIMESTAMP '2026-06-03 19:20', 1, 3, 7, 2);
+SELECT seed_paid_order(3, 2, TIMESTAMP '2026-06-10 12:40', 2, 2, 11, 2);
+SELECT seed_paid_order(2, 4, TIMESTAMP '2026-06-15 20:00', 3, 1, 12, 1);
+SELECT seed_paid_order(3, 6, TIMESTAMP '2026-06-18 13:30', 1, 1, 8, 2);
 
-DROP FUNCTION seed_paid_order(INT,INT,INT,TIMESTAMP,INT,INT,INT,INT);
+DROP FUNCTION seed_paid_order(INT,INT,TIMESTAMP,INT,INT,INT,INT);
 
--- Один активный заказ в статусе «Составление» для демонстрации UI
-INSERT INTO orders(reservation_id, table_id, waiter_id, status, created_at)
-VALUES (6, 4, 2, 'COMPOSING', now());
+-- Открытая смена официанта Иванова на сегодня со столами 1–5
+-- (нужна, чтобы официант мог вести заказы и чтобы определялся как официант).
+INSERT INTO shifts(waiter_id, work_date, status, opened_at)
+VALUES (2, CURRENT_DATE, 'OPEN', now())
+ON CONFLICT (waiter_id, work_date) DO UPDATE SET status = 'OPEN', opened_at = now();
+INSERT INTO shift_tables(shift_id, table_id)
+SELECT s.id, t.id
+FROM shifts s, restaurant_tables t
+WHERE s.waiter_id = 2 AND s.work_date = CURRENT_DATE AND t.number IN (1,2,3,4,5)
+ON CONFLICT DO NOTHING;
+
+-- Один активный заказ в статусе «Составление» (стол 1 закреплён за Ивановым сегодня)
+INSERT INTO orders(table_id, status, created_at)
+VALUES (1, 'COMPOSING', now());

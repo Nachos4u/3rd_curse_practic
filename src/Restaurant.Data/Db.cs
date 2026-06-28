@@ -11,7 +11,7 @@ namespace Restaurant.Data;
 public static class Db
 {
     private const string DefaultConnectionString =
-        "Host=localhost;Port=5432;Database=restaurant_db;Username=postgres;Password=eto_CATAHA2006";
+        "Host=localhost;Port=5433;Database=restaurant_db;Username=postgres;Password=eto_CATAHA2006";
 
     private static string _connectionString =
         Environment.GetEnvironmentVariable("RESTAURANT_DB") ?? DefaultConnectionString;

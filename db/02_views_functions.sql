@@ -26,30 +26,52 @@ CREATE OR REPLACE VIEW v_order_totals AS
 SELECT o.id AS order_id,
        o.status,
        o.table_id,
-       o.waiter_id,
        COALESCE(SUM(vi.line_total), 0) AS order_total,
        COALESCE(SUM(vi.quantity), 0)   AS items_count
 FROM orders o
 LEFT JOIN v_order_items vi ON vi.order_id = o.id
-GROUP BY o.id, o.status, o.table_id, o.waiter_id;
+GROUP BY o.id, o.status, o.table_id;
+
+-- Представление: заказ с выведенными столом, официантом и суммой.
+-- Официант определяется закреплением стола заказа за официантом в смене
+-- (shifts.work_date = дата заказа). Это убирает прямую связь orders→users.
+CREATE OR REPLACE VIEW v_orders AS
+SELECT o.id,
+       o.table_id,
+       t.number                                  AS table_number,
+       asg.waiter_id,
+       u.last_name || ' ' || u.first_name        AS waiter_name,
+       o.status,
+       o.created_at,
+       o.placed_at,
+       vt.order_total,
+       vt.items_count
+FROM orders o
+JOIN restaurant_tables t ON t.id = o.table_id
+JOIN v_order_totals vt   ON vt.order_id = o.id
+LEFT JOIN LATERAL (
+    -- единственное закрепление стола за официантом на дату заказа
+    SELECT s.waiter_id
+    FROM shift_tables st
+    JOIN shifts s ON s.id = st.shift_id
+    WHERE st.table_id = o.table_id
+      AND s.work_date = o.created_at::date
+    LIMIT 1
+) asg ON TRUE
+LEFT JOIN users u ON u.id = asg.waiter_id;
 
 -- ---------------------------------------------------------------------
 -- Функция: эффективная скидка на блюдо на заданную дату
--- (максимальная среди действующих акций на блюдо или его категорию)
+-- (максимальная среди действующих акций, охватывающих это блюдо)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_effective_discount(p_dish_id INTEGER, p_on_date DATE)
 RETURNS NUMERIC AS $$
     SELECT COALESCE(MAX(p.discount_percent), 0)
     FROM promotions p
+    JOIN promotion_dishes pd ON pd.promotion_id = p.id
     WHERE p.is_active
       AND p_on_date BETWEEN p.start_date AND p.end_date
-      AND (
-            EXISTS (SELECT 1 FROM promotion_dishes pd
-                    WHERE pd.promotion_id = p.id AND pd.dish_id = p_dish_id)
-         OR EXISTS (SELECT 1 FROM promotion_categories pc
-                    JOIN dishes d ON d.category_id = pc.category_id
-                    WHERE pc.promotion_id = p.id AND d.id = p_dish_id)
-          );
+      AND pd.dish_id = p_dish_id;
 $$ LANGUAGE sql STABLE;
 
 -- ---------------------------------------------------------------------
@@ -176,29 +198,38 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ---------------------------------------------------------------------
--- Триггер: пересчёт итоговой суммы счёта при изменении состава счёта
+-- Представление: итоговая сумма счёта (вычисляется, не хранится).
+-- Сумма счёта — производная от сумм входящих в него заказов, поэтому
+-- не дублируется в таблице bills (соответствие 3НФ).
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION trg_recalc_bill() RETURNS TRIGGER AS $$
-DECLARE
-    v_bill INTEGER;
-BEGIN
-    v_bill := COALESCE(NEW.bill_id, OLD.bill_id);
-    UPDATE bills b
-    SET total_amount = COALESCE((
-        SELECT SUM(vt.order_total)
-        FROM bill_orders bo
-        JOIN v_order_totals vt ON vt.order_id = bo.order_id
-        WHERE bo.bill_id = v_bill
-    ), 0)
-    WHERE b.id = v_bill;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE VIEW v_bill_totals AS
+SELECT b.id AS bill_id,
+       COALESCE(SUM(vt.order_total), 0) AS total
+FROM bills b
+LEFT JOIN bill_orders bo ON bo.bill_id = b.id
+LEFT JOIN v_order_totals vt ON vt.order_id = bo.order_id
+GROUP BY b.id;
 
-DROP TRIGGER IF EXISTS tr_bill_orders ON bill_orders;
-CREATE TRIGGER tr_bill_orders
-    AFTER INSERT OR DELETE ON bill_orders
-    FOR EACH ROW EXECUTE FUNCTION trg_recalc_bill();
+-- ---------------------------------------------------------------------
+-- Представление: счёт с выведенными (не хранимыми) стол и сумма.
+-- Стол берётся из заказов счёта, сумма — из v_bill_totals.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_bills AS
+SELECT b.id,
+       b.status,
+       b.created_at,
+       b.paid_at,
+       tbl.table_id,
+       t.number AS table_number,
+       bt.total
+FROM bills b
+JOIN v_bill_totals bt ON bt.bill_id = b.id
+LEFT JOIN LATERAL (
+    SELECT MIN(o.table_id) AS table_id
+    FROM bill_orders bo JOIN orders o ON o.id = bo.order_id
+    WHERE bo.bill_id = b.id
+) tbl ON TRUE
+LEFT JOIN restaurant_tables t ON t.id = tbl.table_id;
 
 -- =====================================================================
 --  ОТЧЁТЫ (по требованиям раздела «Статистика»)
@@ -276,18 +307,28 @@ RETURNS TABLE (
     d_receipts     BIGINT,
     d_sum          NUMERIC
 ) AS $$
+    -- Официант заказа и чека определяется через v_orders
+    -- (закрепление стола за официантом в смене).
     WITH ord AS (
-        SELECT waiter_id,
-               EXTRACT(YEAR FROM placed_at)::INT y, EXTRACT(MONTH FROM placed_at)::INT m,
+        SELECT vo.waiter_id,
+               EXTRACT(YEAR FROM vo.placed_at)::INT y, EXTRACT(MONTH FROM vo.placed_at)::INT m,
                COUNT(*) cnt
-        FROM orders WHERE status <> 'CANCELLED' AND placed_at IS NOT NULL
-        GROUP BY waiter_id, y, m
+        FROM v_orders vo
+        WHERE vo.status <> 'CANCELLED' AND vo.placed_at IS NOT NULL AND vo.waiter_id IS NOT NULL
+        GROUP BY vo.waiter_id, y, m
     ),
     rec AS (
-        SELECT waiter_id,
-               EXTRACT(YEAR FROM paid_at)::INT y, EXTRACT(MONTH FROM paid_at)::INT m,
-               COUNT(*) cnt, SUM(total) total
-        FROM receipts GROUP BY waiter_id, y, m
+        SELECT w.waiter_id,
+               EXTRACT(YEAR FROM r.paid_at)::INT y, EXTRACT(MONTH FROM r.paid_at)::INT m,
+               COUNT(*) cnt, SUM(r.total) total
+        FROM receipts r
+        JOIN LATERAL (
+            SELECT vo.waiter_id
+            FROM bill_orders bo JOIN v_orders vo ON vo.id = bo.order_id
+            WHERE bo.bill_id = r.bill_id AND vo.waiter_id IS NOT NULL
+            LIMIT 1
+        ) w ON TRUE
+        GROUP BY w.waiter_id, y, m
     )
     SELECT u.last_name, u.first_name, u.middle_name,
            COALESCE(o1.cnt,0), COALESCE(r1.cnt,0), COALESCE(r1.total,0),

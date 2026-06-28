@@ -23,6 +23,19 @@ public class ShiftRepository
             new { date = date.Date }).ToList();
     }
 
+    /// <summary>Столы, закреплённые за официантом в его смене на дату.</summary>
+    public List<RestaurantTable> GetAssignedTables(int waiterId, DateTime date)
+    {
+        using var c = Db.Open();
+        return c.Query<RestaurantTable>(@"
+            SELECT t.id, t.number, t.seats, t.pos_x, t.pos_y, t.status::text AS status
+            FROM shift_tables st
+            JOIN shifts s ON s.id = st.shift_id
+            JOIN restaurant_tables t ON t.id = st.table_id
+            WHERE s.waiter_id = @waiterId AND s.work_date = @date
+            ORDER BY t.number", new { waiterId, date = date.Date }).ToList();
+    }
+
     /// <summary>Смена конкретного официанта на дату (или null).</summary>
     public Shift? GetForWaiter(int waiterId, DateTime date)
     {

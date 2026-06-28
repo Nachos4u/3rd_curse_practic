@@ -7,14 +7,13 @@ namespace Restaurant.Data;
 public class ReservationRepository
 {
     private const string Select = @"
-        SELECT r.id, r.client_id, r.guests_count, r.reserve_date::timestamp AS reserve_date,
+        SELECT r.id, r.guest_name, r.guest_phone, r.guests_count,
+               r.reserve_date::timestamp AS reserve_date,
                r.start_time, r.end_time, r.status::text AS status,
-               u.last_name || ' ' || u.first_name AS client_name,
                (SELECT string_agg(t.number::text, ', ' ORDER BY t.number)
                 FROM reservation_tables rt JOIN restaurant_tables t ON t.id = rt.table_id
                 WHERE rt.reservation_id = r.id) AS tables
-        FROM reservations r
-        LEFT JOIN users u ON u.id = r.client_id ";
+        FROM reservations r ";
 
     /// <summary>Брони на указанную дату.</summary>
     public List<Reservation> GetByDate(DateTime date)
@@ -42,8 +41,8 @@ public class ReservationRepository
         using var c = Db.Open();
         using var tx = c.BeginTransaction();
         int id = c.ExecuteScalar<int>(@"
-            INSERT INTO reservations(client_id, guests_count, reserve_date, start_time, end_time, status)
-            VALUES (@ClientId, @GuestsCount, @ReserveDate, @StartTime, @EndTime, 'ACTIVE')
+            INSERT INTO reservations(guest_name, guest_phone, guests_count, reserve_date, start_time, end_time, status)
+            VALUES (@GuestName, @GuestPhone, @GuestsCount, @ReserveDate, @StartTime, @EndTime, 'ACTIVE')
             RETURNING id", r, tx);
         foreach (var tid in tableIds)
             c.Execute("INSERT INTO reservation_tables(reservation_id, table_id) VALUES (@id, @tid)",

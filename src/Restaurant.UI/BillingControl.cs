@@ -64,7 +64,7 @@ public class BillingControl : UserControl, IReloadable
 
         // В счёт включаются все готовые заказы выбранного стола.
         var sameTable = _orders.GetBillable().Where(o => o.TableNumber == order.TableNumber).Select(o => o.Id).ToList();
-        var r = _billing.CreateBill(order.TableId, order.ReservationId, sameTable);
+        var r = _billing.CreateBill(sameTable);
         Ui.Show(r);
         Reload();
     }
@@ -75,7 +75,7 @@ public class BillingControl : UserControl, IReloadable
         using var dlg = new PaymentForm(_billing.GetBillTotal(billId));
         if (dlg.ShowDialog() != DialogResult.OK) return;
 
-        var (res, receipt) = _billing.Pay(billId, AppSession.Current!.Id, dlg.Method);
+        var (res, receipt) = _billing.Pay(billId, dlg.Method);
         Ui.Show(res);
         if (receipt is not null)
             new ReceiptForm(receipt).ShowDialog();

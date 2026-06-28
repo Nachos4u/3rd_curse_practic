@@ -11,6 +11,10 @@ public class ShiftService
     public List<Shift> GetByDate(DateTime date) => _repo.GetByDate(date);
     public Shift? GetForWaiter(int waiterId, DateTime date) => _repo.GetForWaiter(waiterId, date);
 
+    /// <summary>Столы, закреплённые за официантом в смене на дату.</summary>
+    public List<RestaurantTable> GetAssignedTables(int waiterId, DateTime date) =>
+        _repo.GetAssignedTables(waiterId, date);
+
     /// <summary>Администратор планирует смену официанта и прикрепляет столы.</summary>
     public OperationResult Plan(int waiterId, DateTime date, List<int> tableIds)
     {

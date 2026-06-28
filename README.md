@@ -65,23 +65,24 @@ RestaurantApp.slnx
 
 ### 1. Развёртывание базы данных
 
-Создайте базу и примените скрипты (по умолчанию используется пользователь `postgres`):
+Создайте базу и примените скрипты (по умолчанию используется пользователь `postgres`,
+сервер PostgreSQL на порту `5433`):
 
 ```bash
-psql -U postgres -c "CREATE DATABASE restaurant_db ENCODING 'UTF8';"
-psql -U postgres -d restaurant_db -f db/01_schema.sql
-psql -U postgres -d restaurant_db -f db/02_views_functions.sql
-psql -U postgres -d restaurant_db -f db/03_seed.sql
+psql -U postgres -p 5433 -c "CREATE DATABASE restaurant_db ENCODING 'UTF8';"
+psql -U postgres -p 5433 -d restaurant_db -f db/01_schema.sql
+psql -U postgres -p 5433 -d restaurant_db -f db/02_views_functions.sql
+psql -U postgres -p 5433 -d restaurant_db -f db/03_seed.sql
 ```
 
 ### 2. Настройка подключения
 
 По умолчанию приложение подключается к
-`Host=localhost;Port=5432;Database=restaurant_db;Username=postgres`.
+`Host=localhost;Port=5433;Database=restaurant_db;Username=postgres`.
 Строку подключения можно переопределить переменной окружения:
 
 ```bash
-set RESTAURANT_DB=Host=localhost;Port=5432;Database=restaurant_db;Username=postgres;Password=ВАШ_ПАРОЛЬ
+set RESTAURANT_DB=Host=localhost;Port=5433;Database=restaurant_db;Username=postgres;Password=ВАШ_ПАРОЛЬ
 ```
 
 ### 3. Сборка и запуск

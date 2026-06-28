@@ -18,8 +18,7 @@ public class OrderService
     public List<OrderItem> GetItems(int orderId) => _repo.GetItems(orderId);
 
     /// <summary>Создаёт новый заказ для стола.</summary>
-    public int Create(int tableId, int waiterId, int? reservationId) =>
-        _repo.Create(tableId, waiterId, reservationId);
+    public int Create(int tableId) => _repo.Create(tableId);
 
     /// <summary>Добавляет блюдо в заказ (контроль склада — в функции БД).</summary>
     public OperationResult AddItem(int orderId, int dishId, int qty)

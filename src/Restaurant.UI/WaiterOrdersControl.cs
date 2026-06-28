@@ -8,7 +8,7 @@ public class WaiterOrdersControl : UserControl, IReloadable
 {
     private readonly OrderService _orders = new();
     private readonly MenuService _menu = new();
-    private readonly TableService _tables = new();
+    private readonly ShiftService _shifts = new();
 
     private readonly DataGridView _orderGrid = Ui.Grid();
     private readonly DataGridView _itemGrid = Ui.Grid();
@@ -121,10 +121,17 @@ public class WaiterOrdersControl : UserControl, IReloadable
 
     private void CreateOrder()
     {
-        var all = _tables.GetAll();
-        using var dlg = new PickTableForm(all);
+        // Заказ можно создать только на стол, закреплённый за официантом в его смене:
+        // именно по этому закреплению определяется официант заказа.
+        var myTables = _shifts.GetAssignedTables(AppSession.Current!.Id, DateTime.Today);
+        if (myTables.Count == 0)
+        {
+            Ui.Error("Нет закреплённых за вами столов. Откройте смену (столы назначает администратор).");
+            return;
+        }
+        using var dlg = new PickTableForm(myTables);
         if (dlg.ShowDialog() != DialogResult.OK || dlg.SelectedTable is null) return;
-        int id = _orders.Create(dlg.SelectedTable.Id, AppSession.Current!.Id, null);
+        int id = _orders.Create(dlg.SelectedTable.Id);
         Ui.Info($"Создан заказ №{id} к столу №{dlg.SelectedTable.Number}.");
         Reload();
     }

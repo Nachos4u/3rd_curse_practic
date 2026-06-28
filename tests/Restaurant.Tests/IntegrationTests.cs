@@ -43,7 +43,7 @@ public class IntegrationTests
 
         var svc = new ReservationService();
         // 10 гостей за один стол на 2 места — должно быть отклонено.
-        var r = svc.Create(null, 10, DateTime.Today.AddDays(30),
+        var r = svc.Create("Тестовый гость", null, 10, DateTime.Today.AddDays(30),
             new TimeOnly(12, 0), new TimeOnly(14, 0),
             new List<int> { smallTable.Id });
         Assert.False(r.Success);
@@ -56,7 +56,7 @@ public class IntegrationTests
         Skip.IfNot(DbAvailable(), "БД недоступна");
         var tableId = new TableRepository().GetAll().First().Id;
         var svc = new ReservationService();
-        var r = svc.Create(null, 2, DateTime.Today.AddDays(30),
+        var r = svc.Create("Тестовый гость", null, 2, DateTime.Today.AddDays(30),
             new TimeOnly(7, 0), new TimeOnly(8, 0),
             new List<int> { tableId });
         Assert.False(r.Success);
@@ -105,7 +105,7 @@ public class IntegrationTests
     public void Shifts_GetByDate_ReadsWorkDate()
     {
         Skip.IfNot(DbAvailable(), "БД недоступна");
-        var shifts = new ShiftRepository().GetByDate(new DateTime(2026, 6, 22));
+        var shifts = new ShiftRepository().GetByDate(new DateTime(2026, 6, 10));
         Assert.NotEmpty(shifts);
     }
 

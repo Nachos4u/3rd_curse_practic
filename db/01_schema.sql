@@ -97,7 +97,11 @@ CREATE TABLE restaurant_tables (
 -- ---------------------------------------------------------------------
 CREATE TABLE reservations (
     id           SERIAL         PRIMARY KEY,
-    client_id    INTEGER        REFERENCES users(id),   -- кто бронирует (может быть NULL для гостя «с улицы»)
+    -- Бронь оформляется на имя гостя. Прямой ссылки на users нет намеренно:
+    -- иначе возникает цикл users → reservations → reservation_tables →
+    -- restaurant_tables → shift_tables → shifts → users.
+    guest_name   VARCHAR(120)   NOT NULL,
+    guest_phone  VARCHAR(20),
     guests_count SMALLINT       NOT NULL CHECK (guests_count > 0),
     reserve_date DATE           NOT NULL,
     start_time   TIME           NOT NULL,
@@ -168,7 +172,9 @@ CREATE TABLE stock_movements (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
--- Акции (скидки на блюда и/или категории на период).
+-- Акции (скидки на блюда на период). Скидка на категорию задаётся
+-- перечислением её блюд в promotion_dishes — это избавляет от связи
+-- promotions↔categories, дублирующей путь promotions→dishes→categories.
 CREATE TABLE promotions (
     id               SERIAL       PRIMARY KEY,
     name             VARCHAR(120) NOT NULL,
@@ -185,23 +191,19 @@ CREATE TABLE promotion_dishes (
     PRIMARY KEY (promotion_id, dish_id)
 );
 
-CREATE TABLE promotion_categories (
-    promotion_id INTEGER NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
-    category_id  INTEGER NOT NULL REFERENCES categories(id),
-    PRIMARY KEY (promotion_id, category_id)
-);
-
 -- ---------------------------------------------------------------------
 -- Заказы и позиции заказа
 -- ---------------------------------------------------------------------
+-- Заказ привязан только к столу. Официант заказа НЕ хранится здесь:
+-- он определяется закреплением этого стола за официантом в смене
+-- (shift_tables → shifts), что исключает связи orders→users и orders→
+-- reservations, создававшие циклы. Официант выводится представлением v_orders.
 CREATE TABLE orders (
-    id             SERIAL       PRIMARY KEY,
-    reservation_id INTEGER      REFERENCES reservations(id),
-    table_id       INTEGER      NOT NULL REFERENCES restaurant_tables(id),
-    waiter_id      INTEGER      NOT NULL REFERENCES users(id),
-    status         order_status NOT NULL DEFAULT 'COMPOSING',
-    created_at     TIMESTAMP    NOT NULL DEFAULT now(),
-    placed_at      TIMESTAMP                                   -- момент оформления
+    id         SERIAL       PRIMARY KEY,
+    table_id   INTEGER      NOT NULL REFERENCES restaurant_tables(id),
+    status     order_status NOT NULL DEFAULT 'COMPOSING',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    placed_at  TIMESTAMP                                   -- момент оформления
 );
 
 CREATE TABLE order_items (
@@ -214,21 +216,25 @@ CREATE TABLE order_items (
     UNIQUE (order_id, dish_id)
 );
 
-CREATE INDEX idx_orders_waiter ON orders(waiter_id);
 CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_table  ON orders(table_id);
 CREATE INDEX idx_items_dish    ON order_items(dish_id);
 
 -- ---------------------------------------------------------------------
 -- Счета и чеки
 -- ---------------------------------------------------------------------
+-- Счёт — это группа заказов (через bill_orders). Стол, бронь и сумма счёта
+-- ПОЛНОСТЬЮ определяются входящими заказами, поэтому здесь НЕ дублируются:
+--   * хранение table_id/reservation_id создавало бы цикл
+--     restaurant_tables → bills → bill_orders → orders → restaurant_tables
+--     (один факт двумя путями, риск рассинхронизации);
+--   * сумма — производное значение.
+-- Стол и сумма счёта вычисляются представлением v_bills / v_bill_totals.
 CREATE TABLE bills (
-    id             SERIAL        PRIMARY KEY,
-    reservation_id INTEGER       REFERENCES reservations(id),
-    table_id       INTEGER       NOT NULL REFERENCES restaurant_tables(id),
-    status         bill_status   NOT NULL DEFAULT 'OPEN',
-    total_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
-    created_at     TIMESTAMP     NOT NULL DEFAULT now(),
-    paid_at        TIMESTAMP
+    id          SERIAL      PRIMARY KEY,
+    status      bill_status NOT NULL DEFAULT 'OPEN',
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    paid_at     TIMESTAMP
 );
 
 -- Счёт может объединять несколько заказов клиента (связь M:N).
@@ -238,14 +244,16 @@ CREATE TABLE bill_orders (
     PRIMARY KEY (bill_id, order_id)
 );
 
+-- total в чеке — зафиксированный на момент оплаты финансовый факт
+-- (фактически уплаченная сумма); допустимый «снимок», как unit_price в позиции.
+-- Официант (кассир) не хранится: он выводится из заказов счёта
+-- (bill_orders → orders → v_orders), без связи receipts→users.
 CREATE TABLE receipts (
     id             SERIAL        PRIMARY KEY,
     bill_id        INTEGER       NOT NULL UNIQUE REFERENCES bills(id),
-    waiter_id      INTEGER       NOT NULL REFERENCES users(id),
     total          NUMERIC(12,2) NOT NULL CHECK (total >= 0),
     payment_method VARCHAR(20)   NOT NULL DEFAULT 'CASH',
     paid_at        TIMESTAMP     NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_receipts_waiter ON receipts(waiter_id);
-CREATE INDEX idx_receipts_paid   ON receipts(paid_at);
+CREATE INDEX idx_receipts_paid ON receipts(paid_at);
